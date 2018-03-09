@@ -3,5 +3,4 @@ Please refer to https://github.com/dengste/org-caldav
 Modification:
 1. Support TODO keyword on sync (issue: https://github.com/myuhe/org-gcal.el/issues/76)
   
-2. Fix bug when org-gcal-file-alist contains more than one file. org-gcal always update file from the first item in org-gcal-file-alist.
-(issue: https://github.com/myuhe/org-gcal.el/issues/30)
+2. Fix bug when org-gcal-file-alist contains more than one file. org-gcal always update file from the first item in org-gcal-file-alist. (issue: https://github.com/myuhe/org-gcal.el/issues/30)
