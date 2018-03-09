@@ -2,6 +2,7 @@
 
 ;; Author: myuhe <yuhei.maeda_at_gmail.com>
 ;; URL: https://github.com/myuhe/org-gcal.el
+;; Package-Version: 20170420.1401
 ;; Version: 0.2
 ;; Maintainer: myuhe
 ;; Copyright (C) :2014 myuhe all rights reserved.
@@ -279,7 +280,23 @@
                                 (car (org-element-map (org-element-at-point) 'headline
                                   (lambda (hl) (org-element-property :end hl)))))))))))
 
-(defun org-gcal-post-at-point (&optional skip-import)
+(defun org-gcal--get-title (elem)
+  (let ((todo (org-element-property :todo-keyword elem))
+        (title (org-element-property :title elem)))
+    (concat
+     (when todo todo)
+     (when todo " ")
+     title)))
+
+(defun org-gcal--find-file-match-alist (file list)
+  (if list 
+      (let ((a (expand-file-name file))
+            (b (expand-file-name (cdar list))))
+        (if (string= a b)
+            (caar list)
+          (org-gcal--find-file-match-alist file (cdr list)))) nil))
+
+(defun org-gcal-post-at-point (&optional skip-import cid)
   (interactive)
   (org-gcal--ensure-token)
   (save-excursion
@@ -291,7 +308,7 @@
                                            (save-excursion (outline-next-heading) (point)))
                         (goto-char (match-beginning 0))
                         (org-element-timestamp-parser)))
-           (smry (org-element-property :title elem))
+           (smry (org-gcal--get-title elem))
            (loc  (org-element-property :LOCATION elem))
            (id  (org-element-property :ID elem))
            (start (org-gcal--format-org2iso
@@ -317,10 +334,12 @@
                         " *:PROPERTIES:\n  \\(.*\\(?:\n.*\\)*?\\) :END:\n\n" ""
                         (buffer-substring-no-properties
                          (plist-get (cadr elem) :contents-begin)
-                         (plist-get (cadr elem) :contents-end)))) "")))
-      (org-gcal--post-event start end smry loc desc id nil skip-import))))
+                         (plist-get (cadr elem) :contents-end)))) ""))
+           (cid (if cid cid (org-gcal--find-file-match-alist (buffer-file-name) org-gcal-file-alist))))
+      
+      (org-gcal--post-event start end smry loc desc id nil skip-import :cid cid))))
 
-(defun org-gcal-delete-at-point (&optional skip-import)
+(defun org-gcal-delete-at-point (&optional skip-import cid)
   (interactive)
   (org-gcal--ensure-token)
   (save-excursion
@@ -328,11 +347,12 @@
     (org-back-to-heading)
     (let* ((skip-import skip-import)
            (elem (org-element-headline-parser (point-max) t))
-           (smry (org-element-property :title elem))
-           (id (org-element-property :ID elem)))
+           (smry (org-gcal--get-title elem))
+           (id (org-element-property :ID elem))
+           (cid (if cid cid (org-gcal--find-file-match-alist (buffer-file-name) org-gcal-file-alist))))
       (when (and id
                  (y-or-n-p (format "Do you really want to delete event?\n\n%s\n\n" smry)))
-        (org-gcal--delete-event id nil skip-import)))))
+        (org-gcal--delete-event id nil skip-import :cid cid)))))
 
 (defun org-gcal-request-authorization ()
   "Request OAuth authorization at AUTH-URL by launching `browse-url'.
@@ -414,7 +434,7 @@ It returns the code provided by the service."
                                              (plist-get tobj :day-end)
                                              (plist-get tobj :month-end)
                                              (plist-get tobj :year-end))))
-          (org-gcal--notify "Archived event." (org-element-property :title elem))
+          (org-gcal--notify "Archived event." (org-gcal--get-title elem))
           (org-archive-subtree))))
     (save-buffer)))
 
@@ -625,7 +645,7 @@ TO.  Instead an empty string is returned."
 (defun org-gcal--param-date-alt (str)
   (if (< 11 (length str)) "date" "dateTime"))
 
-(defun org-gcal--post-event (start end smry loc desc &optional id a-token skip-import skip-export)
+(defun org-gcal--post-event (start end smry loc desc &optional id a-token skip-import skip-export cid)
   (let ((stime (org-gcal--param-date start))
         (etime (org-gcal--param-date end))
         (stime-alt (org-gcal--param-date-alt start))
@@ -635,7 +655,7 @@ TO.  Instead an empty string is returned."
                    (org-gcal--get-access-token))))
     (request
      (concat
-      (format org-gcal-events-url (car (car org-gcal-file-alist)))
+      (format org-gcal-events-url (if cid cid (car (car org-gcal-file-alist))))
       (when id
         (concat "/" id)))
      :type (if id "PATCH" "POST")
@@ -674,12 +694,12 @@ TO.  Instead an empty string is returned."
                                      (concat "Org-gcal post event\n  " (plist-get data :summary)))
                      (unless skip-import (org-gcal-fetch))))))))
 
-(defun org-gcal--delete-event (event-id &optional a-token skip-import skip-export)
+(defun org-gcal--delete-event (event-id &optional a-token skip-import skip-export cid)
   (let ((skip-import skip-import)
         (a-token (if a-token
                      a-token
                    (org-gcal--get-access-token)))
-        (calendar-id (caar org-gcal-file-alist)))
+        (calendar-id (if cid cid (caad org-gcal-file-alist))))
     (request
      (concat
       (format org-gcal-events-url calendar-id)
